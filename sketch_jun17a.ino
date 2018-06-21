@@ -3,10 +3,6 @@
 
 #define IR_INPUT_PIN A0
 #define IR_LED_PIN D1
-#define THRESHOLD 50
-
-#define THRESHOLD_LOW 110
-#define THRESHOLD_HIGH 350
 
 const char* wifi_ssid = "IOT";
 const char* wifi_password = "AardvarkBadgerHedgehog";
@@ -15,7 +11,11 @@ const char* mqtt_topic = "esp8266_arduino_out";
 const char* mqtt_server = "home.hofman.frl";
 const int8_t mqtt_idx = 124;
 
-int8_t state = THRESHOLD_LOW;
+int16_t _state_low = 100;
+int16_t _state_high = 600;
+int16_t _state_threshold = 50;
+
+int16_t _state = _state_low;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -45,13 +45,12 @@ void setup(){
   pinMode(IR_INPUT_PIN, INPUT);
   pinMode(IR_LED_PIN, OUTPUT);
 
-  int8_t val = readRPR220();
+  int16_t val = readRPR220();
   checkState(val);
 }
 
-
 void loop() {
-  int8_t val = readRPR220();
+  int16_t val = readRPR220();
 
   Serial.println(val);
 
@@ -60,19 +59,22 @@ void loop() {
 //    sendDomoticz();
   }
 
-  delay(80);
+  // 1000ms / (40ms + 5ms + 5ms) = 20 times/second.
+  delay(40);
 }
 
+bool checkState(int16_t val) {
+  int16_t newState = (_state == _state_low) ? _state_high : _state_low;
 
-bool checkState(int8_t val) {
-  int8_t newState = (state == THRESHOLD_LOW) ? THRESHOLD_HIGH : THRESHOLD_LOW;
+  if (val > (newState - _state_threshold)
+    && val < (newState + _state_threshold)) {
 
-  if (val > (newState - THRESHOLD)
-    && val < (newState + THRESHOLD)) {
+    Serial.print("Switching state from ");
+    Serial.print(_state);
+    Serial.print(" to ");
+    Serial.println(newState);
 
-    Serial.print("Switching state from " + state);
-    Serial.println(" to " + newState);
-    state = newState;
+    _state = newState;
 
     return true;
   }
@@ -80,23 +82,22 @@ bool checkState(int8_t val) {
   return false;
 }
 
-
-int8_t readRPR220() {
-  uint8_t val = 0;
+int16_t readRPR220() {
+  uint16_t val = 0;
 
   digitalWrite(IR_LED_PIN, LOW);
-  delay(10);
+  delay(5);
   val = analogRead(IR_INPUT_PIN);
 
   digitalWrite(IR_LED_PIN, HIGH);
-  delay(10);
+  delay(5);
   val = analogRead(IR_INPUT_PIN) - val;
   val = 0 - val;
 
   return (val < 0) ? 0 : val;
 }
 
-void sendBasicInfo(int8_t val) {
+void sendBasicInfo(int16_t val) {
   String payload = "{\"val\":";
   payload += val;
   payload += "}";
